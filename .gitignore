@@ -1,0 +1,84 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.pfx
+
+# Testing and coverage
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+
+# Linters and formatters
+.ruff_cache/
+.mypy_cache/
+
+# Databases and persistent volumes
+*.sqlite3
+*.db
+data/
+neo4j_data/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project generated artifacts (keep .gitkeep files)
+artifacts/logs/*
+!artifacts/logs/.gitkeep
+artifacts/reports/*
+!artifacts/reports/.gitkeep
+artifacts/coverage/*
+!artifacts/coverage/.gitkeep
+artifacts/audit/*.jsonl
+
+# Frontend Node and Next.js builds
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+*.tsbuildinfo
+
+# Confidential internal files
+*.pdf
