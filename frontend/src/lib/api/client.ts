@@ -30,6 +30,35 @@ import {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
+async function getAuthToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  let token = sessionStorage.getItem("falcon_auth_token");
+  if (!token) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/auth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operator_id: "operator-console",
+          role: "admin",
+          target_account_id: "000000000000",
+          valid_duration_seconds: 86400,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        token = data.access_token;
+        if (token) {
+          sessionStorage.setItem("falcon_auth_token", token);
+        }
+      }
+    } catch {
+      // Backend may be offline during initial client boot
+    }
+  }
+  return token;
+}
+
 export class ApiError extends Error {
   status: number;
   data: any;
@@ -47,6 +76,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
+  const token = await getAuthToken();
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
   try {
     const res = await fetch(url, {
       ...options,
@@ -54,6 +86,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...authHeaders,
         ...(options.headers || {}),
       },
     });
@@ -216,5 +249,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ mode, dry_run: dryRun }),
     }),
+
+  // Authentication & Session
+  login: async (operatorId: string, role = "operator", targetAccountId = "000000000000") => {
+    const res = await request<{ access_token: string }>("/api/v1/auth/token", {
+      method: "POST",
+      body: JSON.stringify({
+        operator_id: operatorId,
+        role,
+        target_account_id: targetAccountId,
+      }),
+    });
+    if (res.access_token && typeof window !== "undefined") {
+      sessionStorage.setItem("falcon_auth_token", res.access_token);
+    }
+    return res;
+  },
+  logout: () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("falcon_auth_token");
+    }
+  },
+  getMe: () => request<{ operator_id: string; role: string; target_account: string }>("/api/v1/auth/me"),
 };
+
 

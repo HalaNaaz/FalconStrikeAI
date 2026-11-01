@@ -44,5 +44,13 @@ class GraphQueryError(FalconStrikeError):
     """Raised when a graph traversal or attack-path computation fails."""
 
 
+class InsecureConfigurationError(FalconStrikeError):
+    """Raised when an insecure configuration or secret is detected in production mode."""
+
+
+class AuthenticationError(FalconStrikeError):
+    """Raised when request authentication fails."""
+
+
 class TechniqueExecutionError(FalconStrikeError):
     """Raised when an emulation technique fails inside the runner."""
