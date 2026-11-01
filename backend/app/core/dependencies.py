@@ -101,3 +101,4 @@ def require_role(*roles: str | OperatorRole):
         return session
 
     return _role_verifier
+

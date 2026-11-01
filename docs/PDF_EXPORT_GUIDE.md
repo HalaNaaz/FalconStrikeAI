@@ -76,3 +76,4 @@ from backend.app.reporting.exporters import ReportExporter
 # Generate report object
 pdf_bytes = ReportExporter.export_pdf(report, file_path="artifacts/reports/soc_report.pdf")
 ```
+

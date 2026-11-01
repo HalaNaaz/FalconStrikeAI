@@ -52,3 +52,4 @@ In addition to unit testing, the Next.js production build was verified:
 - **Result:** **Exit code 0**
 - **Static Pages:** 14/14 pages prerendered successfully (`/`, `/dashboard`, `/attack-graph`, `/campaign-planner`, `/execution`, `/telemetry`, `/reports`, `/security`, `/audit-logs`, `/environment`, `/settings`, etc.).
 - **TypeScript:** 0 type errors (`npx tsc --noEmit` exit code 0).
+

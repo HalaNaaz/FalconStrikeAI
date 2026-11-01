@@ -57,3 +57,4 @@ describe("Frontend Formatters", () => {
     expect(getStatusBadgeClass("PENDING")).toContain("text-amber-400");
   });
 });
+

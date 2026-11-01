@@ -85,3 +85,4 @@ async def get_my_session(
 ) -> OperatorSession:
     """Return identity and roles of the currently authenticated operator."""
     return current_operator
+

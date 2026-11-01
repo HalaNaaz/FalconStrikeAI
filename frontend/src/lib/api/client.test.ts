@@ -48,3 +48,4 @@ describe("Frontend API Client", () => {
     await expect(api.getHealth()).rejects.toThrow("Invalid token");
   });
 });
+
