@@ -187,3 +187,75 @@ class TestDockerRunner:
             assert call_kwargs["read_only"] is True
             assert call_kwargs["user"] == "10001:10001"
             assert call_kwargs["mem_limit"] == "256m"
+
+    def test_docker_runner_real_host_probe_graceful(self) -> None:
+        """Verify real DockerRunner probe on host returns boolean without unhandled exception."""
+        runner = DockerRunner()
+        res = runner.is_available()
+        assert isinstance(res, bool)
+
+
+class TestKubernetesRunner:
+    """Test suite for Kubernetes Jobs container runner adapter (NFR-P4)."""
+
+    def test_k8s_runner_unavailable_by_default(self) -> None:
+        """Verify KubernetesJobRunner reports False when cluster is unreachable."""
+        from backend.app.orchestrator.kubernetes_runner import KubernetesJobRunner
+
+        runner = KubernetesJobRunner()
+        with patch.dict("sys.modules", {"kubernetes": None}):
+            assert runner.is_available() is False
+        assert runner.runner_name == "kubernetes_job"
+
+    def test_k8s_manifest_generation_containment(self, sample_campaign_plan: CampaignPlan) -> None:
+        """Verify K8s Job manifest enforces dropped capabilities, non-root UID, and memory quotas."""
+        from backend.app.orchestrator.kubernetes_runner import KubernetesJobRunner
+
+        runner = KubernetesJobRunner(namespace="test-sandbox")
+        manifest = runner.build_job_manifest(
+            stage=sample_campaign_plan.stages[0],
+            run_id="RUN-K8S-01",
+            mode=ExecutionMode.DRY_RUN,
+        )
+
+        assert manifest["kind"] == "Job"
+        assert manifest["metadata"]["namespace"] == "test-sandbox"
+        pod_spec = manifest["spec"]["template"]["spec"]
+        assert pod_spec["securityContext"]["runAsNonRoot"] is True
+        assert pod_spec["securityContext"]["runAsUser"] == 10001
+
+        container = pod_spec["containers"][0]
+        assert container["securityContext"]["readOnlyRootFilesystem"] is True
+        assert container["securityContext"]["capabilities"]["drop"] == ["ALL"]
+        assert container["resources"]["limits"]["memory"] == "256Mi"
+
+    def test_k8s_runner_refuses_execution_when_offline(self, sample_campaign_plan: CampaignPlan) -> None:
+        """Verify KubernetesJobRunner raises KubernetesRuntimeUnavailableError when cluster is offline."""
+        from backend.app.orchestrator.kubernetes_runner import (
+            KubernetesJobRunner,
+            KubernetesRuntimeUnavailableError,
+        )
+
+        runner = KubernetesJobRunner()
+        with patch.object(runner, "is_available", return_value=False):
+            with pytest.raises(KubernetesRuntimeUnavailableError, match="Kubernetes cluster runtime is unreachable"):
+                runner.execute_stage(
+                    stage=sample_campaign_plan.stages[0],
+                    run_id="RUN-K8S-01",
+                    mode=ExecutionMode.DRY_RUN,
+                )
+
+    def test_k8s_runner_execution_when_online(self, sample_campaign_plan: CampaignPlan) -> None:
+        """Verify KubernetesJobRunner returns structured SimulationEvent when cluster is online."""
+        from backend.app.orchestrator.kubernetes_runner import KubernetesJobRunner
+
+        runner = KubernetesJobRunner()
+        with patch.object(runner, "is_available", return_value=True):
+            event = runner.execute_stage(
+                stage=sample_campaign_plan.stages[0],
+                run_id="RUN-K8S-01",
+                mode=ExecutionMode.DRY_RUN,
+            )
+            assert event.technique_id == "T1526"
+            assert event.status == "EMULATED_BENIGN"
+            assert "k8s_runner" in (event.output_marker or "")
