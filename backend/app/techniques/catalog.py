@@ -1,0 +1,257 @@
+"""Curated catalog of MITRE ATT&CK technique contracts matching PRD Appendix A."""
+
+from backend.app.techniques.models import AttackTactic, TechniqueContract, TechniqueRiskLevel
+
+CURATED_TECHNIQUE_CONTRACTS: dict[str, TechniqueContract] = {
+    "T1078": TechniqueContract(
+        technique_id="T1078",
+        name="Valid Accounts",
+        tactic=AttackTactic.INITIAL_ACCESS,
+        description="Authenticated API access from an unusual principal or source in-lab; observable as anomalous AssumeRole.",
+        required_resource_types=["IAM_ROLE", "IAM_USER", "PUBLIC_ENDPOINT"],
+        preconditions=["Target IAM role or user must exist and be accessible."],
+        expected_telemetry=[
+            "CloudTrail: sts:AssumeRole",
+            "CloudTrail: ConsoleLogin / GetCallerIdentity",
+        ],
+        expected_iocs=["source_ip: 198.51.100.42", "user_agent: FalconStrike-Emulation-Agent/1.0"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=[
+            "Emulates behavioral authentication pattern only; uses ephemeral scoped credentials."
+        ],
+        teardown_required=False,
+    ),
+    "T1526": TechniqueContract(
+        technique_id="T1526",
+        name="Cloud Service Discovery",
+        tactic=AttackTactic.DISCOVERY,
+        description="Bursts of read-only describe and list API calls; observable as service discovery enumeration.",
+        required_resource_types=["ACCOUNT", "IAM_ROLE", "EC2_INSTANCE"],
+        preconditions=["Read-only IAM permissions for describe/list APIs."],
+        expected_telemetry=["CloudTrail: ec2:DescribeInstances", "CloudTrail: s3:ListAllMyBuckets"],
+        expected_iocs=["api_burst_rate: 15_calls_per_sec", "query_pattern: full_service_sweep"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=["Strictly read-only describe calls; zero resource alteration."],
+        teardown_required=False,
+    ),
+    "T1087": TechniqueContract(
+        technique_id="T1087",
+        name="Account Discovery",
+        tactic=AttackTactic.DISCOVERY,
+        description="Enumeration of IAM users, groups, and roles to identify potential privilege targets.",
+        required_resource_types=["ACCOUNT", "IAM_USER", "IAM_ROLE"],
+        preconditions=["IAM read-only access."],
+        expected_telemetry=["CloudTrail: iam:ListUsers", "CloudTrail: iam:ListRoles"],
+        expected_iocs=["api_call_sequence: iam:ListUsers->iam:ListRoles->iam:GetAccountSummary"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=["Read-only IAM queries."],
+        teardown_required=False,
+    ),
+    "T1580": TechniqueContract(
+        technique_id="T1580",
+        name="Cloud Infrastructure Discovery",
+        tactic=AttackTactic.DISCOVERY,
+        description="Read-only inventory of lab infrastructure, security groups, subnets, and routing tables.",
+        required_resource_types=["EC2_INSTANCE", "SECURITY_GROUP"],
+        preconditions=["EC2 describe access."],
+        expected_telemetry=[
+            "CloudTrail: ec2:DescribeSecurityGroups",
+            "CloudTrail: ec2:DescribeSubnets",
+        ],
+        expected_iocs=["enumeration_marker: infra_recon_sweep"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=["Read-only describe operations."],
+        teardown_required=False,
+    ),
+    "T1098": TechniqueContract(
+        technique_id="T1098",
+        name="Account Manipulation",
+        tactic=AttackTactic.PRIVILEGE_ESCALATION,
+        description="Traversal of an assume-role edge to a higher-privilege role; observable as role chaining.",
+        required_resource_types=["IAM_ROLE"],
+        preconditions=["Source role must possess sts:AssumeRole permission for target role."],
+        expected_telemetry=["CloudTrail: sts:AssumeRole chaining event", "CloudTrail: SwitchRole"],
+        expected_iocs=["role_chain_sequence: WebRole->InternalDevRole->CloudAdminRole"],
+        risk_level=TechniqueRiskLevel.MEDIUM,
+        safety_constraints=[
+            "Traverses existing configured lab roles; does not modify role policies."
+        ],
+        teardown_required=False,
+    ),
+    "T1136": TechniqueContract(
+        technique_id="T1136",
+        name="Create Account",
+        tactic=AttackTactic.PERSISTENCE,
+        description="Creation of a tagged, benign, auto-expiring lab principal; fully reversed at teardown.",
+        required_resource_types=["ACCOUNT"],
+        preconditions=["Target lab account allowlisted; dry-run/simulation verified."],
+        expected_telemetry=["CloudTrail: iam:CreateUser", "CloudTrail: iam:TagUser"],
+        expected_iocs=[
+            "principal_name: falcon-benign-marker-user",
+            "tag: FalconStrike=AdversaryEmulation",
+        ],
+        risk_level=TechniqueRiskLevel.MEDIUM,
+        safety_constraints=[
+            "Benign marker principal with zero permissions; registered in cleanup stack."
+        ],
+        teardown_required=True,
+        teardown_instructions="Delete IAM user 'falcon-benign-marker-user' and verify baseline reversion.",
+    ),
+    "T1053": TechniqueContract(
+        technique_id="T1053",
+        name="Scheduled Task/Job",
+        tactic=AttackTactic.PERSISTENCE,
+        description="Creation of a benign scheduled job in-lab; observable as scheduler creation; removed at teardown.",
+        required_resource_types=["EC2_INSTANCE", "ACCOUNT"],
+        preconditions=["Target host or scheduler service available."],
+        expected_telemetry=["CloudTrail: events:PutRule", "System: crontab modification telemetry"],
+        expected_iocs=["job_command: /bin/echo 'FALCON_STRIKE_BENIGN_MARKER'"],
+        risk_level=TechniqueRiskLevel.MEDIUM,
+        safety_constraints=["Inert echo command only; zero payload or binary execution."],
+        teardown_required=True,
+        teardown_instructions="Remove scheduled rule and verify deletion.",
+    ),
+    "T1552": TechniqueContract(
+        technique_id="T1552",
+        name="Unsecured Credentials",
+        tactic=AttackTactic.CREDENTIAL_ACCESS,
+        description="Discovery of a planted, clearly-marked benign marker secret; observable as secret-access API call.",
+        required_resource_types=["EC2_INSTANCE", "S3_BUCKET"],
+        preconditions=["Target storage location contains pre-planted benign marker."],
+        expected_telemetry=["CloudTrail: s3:GetObject", "System: file read /etc/falcon-marker.txt"],
+        expected_iocs=["marker_header: FALCON_STRIKE_BENIGN_MARKER_TOKEN"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=[
+            "Marker file contains synthetic token; no real enterprise credentials used."
+        ],
+        teardown_required=False,
+    ),
+    "T1555": TechniqueContract(
+        technique_id="T1555",
+        name="Credentials from Password Stores",
+        tactic=AttackTactic.CREDENTIAL_ACCESS,
+        description="Access pattern against a lab secret store using benign marker keys only.",
+        required_resource_types=["ACCOUNT", "IAM_ROLE"],
+        preconditions=["Secrets Manager / SSM read permissions."],
+        expected_telemetry=[
+            "CloudTrail: secretsmanager:GetSecretValue",
+            "CloudTrail: ssm:GetParameter",
+        ],
+        expected_iocs=["secret_id: lab/falcon-test-marker"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=[
+            "Queries synthetic test secret; never touches production secret stores."
+        ],
+        teardown_required=False,
+    ),
+    "T1550": TechniqueContract(
+        technique_id="T1550",
+        name="Use Alternate Authentication Material",
+        tactic=AttackTactic.DEFENSE_EVASION,
+        description="Token-reuse pattern in-lab; observable as alternate authentication usage.",
+        required_resource_types=["IAM_ROLE", "IAM_USER"],
+        preconditions=["Valid session token."],
+        expected_telemetry=["CloudTrail: AssumeRoleWithWebIdentity / STS Token Reuse"],
+        expected_iocs=["session_reuse_signature: dual_ip_token_activity"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=["Emulates behavioral session migration using synthetic test tokens."],
+        teardown_required=False,
+    ),
+    "T1071": TechniqueContract(
+        technique_id="T1071",
+        name="Application Layer Protocol",
+        tactic=AttackTactic.COMMAND_AND_CONTROL,
+        description="Jittered HTTPS beacons carrying inert marker tokens to lab-owned sink for detection validation.",
+        required_resource_types=["PUBLIC_ENDPOINT", "EC2_INSTANCE"],
+        preconditions=["Local or lab-owned HTTPS sink listening."],
+        expected_telemetry=[
+            "VPC Flow Logs: outbound 443 with jitter",
+            "EDR: beacon network connection",
+        ],
+        expected_iocs=[
+            "beacon_destination: 127.0.0.1:8443",
+            "user_agent: FalconStrike-C2-Beacon/1.0",
+        ],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=[
+            "Requests terminate strictly at lab-owned sink; inert state machine tokens."
+        ],
+        teardown_required=False,
+    ),
+    "T1071.004": TechniqueContract(
+        technique_id="T1071.004",
+        name="Application Layer Protocol: DNS",
+        tactic=AttackTactic.COMMAND_AND_CONTROL,
+        description="DNS-based signalling patterns with inert marker subdomains directed to local lab sink.",
+        required_resource_types=["PUBLIC_ENDPOINT", "EC2_INSTANCE"],
+        preconditions=["Local DNS sink configured."],
+        expected_telemetry=["Route53 Resolver Query Logs", "DNS traffic to lab sink"],
+        expected_iocs=["dns_query_pattern: <token>.c2.lab.falconstrike.internal"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=[
+            "Queries directed to lab DNS sink; no third-party infrastructure involved."
+        ],
+        teardown_required=False,
+    ),
+    "T1572": TechniqueContract(
+        technique_id="T1572",
+        name="Protocol Tunneling",
+        tactic=AttackTactic.COMMAND_AND_CONTROL,
+        description="Tunneling traffic shape simulation over standard ports for detection rule testing.",
+        required_resource_types=["EC2_INSTANCE"],
+        preconditions=["Outbound network egress to lab sink."],
+        expected_telemetry=[
+            "VPC Flow Logs: persistent connection on port 443 with uniform packet size"
+        ],
+        expected_iocs=["tunnel_marker: synthetic_tunnel_stream"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=[
+            "Synthetic packet sizing pattern terminating at local sink; no real proxy/tunnel."
+        ],
+        teardown_required=False,
+    ),
+    "T1568": TechniqueContract(
+        technique_id="T1568",
+        name="Dynamic Resolution",
+        tactic=AttackTactic.COMMAND_AND_CONTROL,
+        description="Dynamic-resolution traffic shapes mimicking Fast Flux / DGA for detection testing.",
+        required_resource_types=["EC2_INSTANCE"],
+        preconditions=["DNS query generator."],
+        expected_telemetry=["DNS client event logs", "High-frequency lookup bursts"],
+        expected_iocs=["dga_sample_domain: dga-benign-marker-01.lab.local"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=["Emulates domain query patterns against lab zone only."],
+        teardown_required=False,
+    ),
+    "T1090.004": TechniqueContract(
+        technique_id="T1090.004",
+        name="Proxy: Domain Fronting",
+        tactic=AttackTactic.COMMAND_AND_CONTROL,
+        description="Domain-fronting-style HTTP Host header mismatch traffic shape terminating at lab-owned sink.",
+        required_resource_types=["EC2_INSTANCE", "PUBLIC_ENDPOINT"],
+        preconditions=["Local HTTP sink supporting Host header inspection."],
+        expected_telemetry=["Web proxy / TLS SNI mismatch logs"],
+        expected_iocs=["sni_header: legitimate-lab.local", "http_host: c2-sink.lab.local"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=["Terminates at lab-owned sink; zero abuse of third-party CDNs."],
+        teardown_required=False,
+    ),
+    "T1537": TechniqueContract(
+        technique_id="T1537",
+        name="Transfer Data to Cloud Account",
+        tactic=AttackTactic.EXFILTRATION,
+        description="Copy of an inert benign marker object to a lab-owned, allowlisted destination; reversible.",
+        required_resource_types=["S3_BUCKET"],
+        preconditions=[
+            "Source bucket contains benign marker file; target bucket is in lab allowlist."
+        ],
+        expected_telemetry=["CloudTrail: s3:PutObject", "CloudTrail: s3:CopyObject"],
+        expected_iocs=["marker_payload: FALCON_STRIKE_BENIGN_EXFIL_MARKER_01"],
+        risk_level=TechniqueRiskLevel.LOW,
+        safety_constraints=[
+            "Copies synthetic marker string only; never moves real customer or system data."
+        ],
+        teardown_required=True,
+        teardown_instructions="Delete destination marker object 'FALCON_STRIKE_BENIGN_EXFIL_MARKER_01'.",
+    ),
+}
