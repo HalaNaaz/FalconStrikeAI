@@ -101,7 +101,7 @@ class DockerRunner(BaseRunner):
         ]
 
         try:
-            container = client.containers.run(  # type: ignore
+            container = client.containers.create(  # type: ignore
                 image=self.image_name,
                 command=container_cmd,
                 user="10001:10001",
@@ -110,14 +110,22 @@ class DockerRunner(BaseRunner):
                 mem_limit="256m",
                 cpu_quota=50000,
                 network_mode="none",
-                remove=True,
-                detach=False,
-                stdout=True,
-                stderr=True,
             )
-            raw_output = container.decode("utf-8") if isinstance(container, bytes) else str(container)
-            parsed_result = json.loads(raw_output)
-            return SimulationEvent(**parsed_result)
+            try:
+                container.start()
+                wait_res = container.wait(timeout=30)
+                status_code = wait_res.get("StatusCode", 0) if isinstance(wait_res, dict) else int(wait_res)
+                logs_bytes = container.logs(stdout=True, stderr=True)
+                raw_output = logs_bytes.decode("utf-8") if isinstance(logs_bytes, bytes) else str(logs_bytes)
+                if status_code != 0:
+                    raise RuntimeError(f"Container exited with non-zero status {status_code}: {raw_output}")
+                parsed_result = json.loads(raw_output)
+                return SimulationEvent(**parsed_result)
+            finally:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
         except Exception as exc:
             logger.error(f"Container execution failed: {exc}")
             raise RuntimeError(f"Containerized stage execution failed: {exc}") from exc

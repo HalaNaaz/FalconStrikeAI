@@ -169,8 +169,10 @@ class TestDockerRunner:
         """Verify DockerRunner applies dropped caps, read-only rootfs, and memory limits when online."""
         runner = DockerRunner()
         mock_client = MagicMock()
-        mock_container_output = b'{"event_id": "SIM-01", "technique_id": "T1526", "tactic": "Discovery", "target_resource_id": "target", "status": "EMULATED_BENIGN"}'
-        mock_client.containers.run.return_value = mock_container_output
+        mock_container = MagicMock()
+        mock_container.wait.return_value = {"StatusCode": 0}
+        mock_container.logs.return_value = b'{"event_id": "SIM-01", "technique_id": "T1526", "tactic": "Discovery", "target_resource_id": "target", "status": "EMULATED_BENIGN"}'
+        mock_client.containers.create.return_value = mock_container
 
         with patch.object(runner, "is_available", return_value=True):
             runner._docker_client = mock_client
@@ -181,12 +183,31 @@ class TestDockerRunner:
             )
 
             assert event.technique_id == "T1526"
-            mock_client.containers.run.assert_called_once()
-            call_kwargs = mock_client.containers.run.call_args.kwargs
+            mock_client.containers.create.assert_called_once()
+            call_kwargs = mock_client.containers.create.call_args.kwargs
             assert call_kwargs["cap_drop"] == ["ALL"]
             assert call_kwargs["read_only"] is True
             assert call_kwargs["user"] == "10001:10001"
             assert call_kwargs["mem_limit"] == "256m"
+            mock_container.start.assert_called_once()
+            mock_container.remove.assert_called_once_with(force=True)
+
+    def test_docker_runner_live_real_container_execution(
+        self, sample_campaign_plan: CampaignPlan
+    ) -> None:
+        """Verify real container sandbox execution on live Docker engine if available."""
+        runner = DockerRunner()
+        if not runner.is_available():
+            pytest.skip("Docker daemon not running on host")
+
+        event = runner.execute_stage(
+            stage=sample_campaign_plan.stages[0],
+            run_id="RUN-TEST-LIVE-CONTAINER",
+            mode=ExecutionMode.DRY_RUN,
+        )
+        assert event.technique_id == "T1526"
+        assert event.status == "EMULATED_BENIGN"
+        assert "sandbox_uid_10001" in (event.output_marker or "")
 
     def test_docker_runner_real_host_probe_graceful(self) -> None:
         """Verify real DockerRunner probe on host returns boolean without unhandled exception."""
