@@ -10,6 +10,7 @@ from backend.app.api.v1.detection import router as detection_router
 from backend.app.api.v1.executions import router as executions_router
 from backend.app.api.v1.graph import router as graph_router
 from backend.app.api.v1.health import router as health_router
+from backend.app.api.v1.integrations import router as integrations_router
 from backend.app.api.v1.planner import router as planner_router
 from backend.app.api.v1.policies import router as policies_router
 from backend.app.api.v1.reporting import router as reporting_router
@@ -21,9 +22,10 @@ from backend.app.core.dependencies import get_current_operator
 
 api_v1_router = APIRouter(prefix="/api/v1")
 
-# 1. Unauthenticated endpoints (Health, readiness, auth login)
+# 1. Unauthenticated endpoints (Health, readiness, auth login, integrations status)
 api_v1_router.include_router(health_router)
 api_v1_router.include_router(auth_router)
+api_v1_router.include_router(integrations_router)
 
 # 2. Authenticated endpoints (Require valid Bearer JWT or X-API-Key)
 auth_dep = [Depends(get_current_operator)]

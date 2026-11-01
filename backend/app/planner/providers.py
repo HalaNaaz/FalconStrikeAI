@@ -181,9 +181,10 @@ class DeterministicPlannerProvider(PlannerProvider):
 
 
 class GeminiPlannerProvider(PlannerProvider):
-    """Optional Google Gemini LLM planner with fallback to deterministic planner."""
+    """Google Gemini GenAI planner with strict validation and deterministic fallback (FR-2.1)."""
 
-    def __init__(self) -> None:
+    def __init__(self, model_name: str = "gemini-2.5-flash") -> None:
+        self.model_name = model_name
         self.fallback = DeterministicPlannerProvider()
 
     def plan(
@@ -201,13 +202,58 @@ class GeminiPlannerProvider(PlannerProvider):
             plan.planner_provider = "gemini_fallback_deterministic"
             return plan
 
-        # When credentials are provided, attempt live LLM call
+        # When credentials are provided, attempt live GenAI call
         try:
-            logger.info("Calling Gemini API for campaign planning...")
-            # If live call fails or package is missing, fallback safely
-            plan = self.fallback.plan(path, findings, run_id)
-            plan.planner_provider = "gemini"
-            return plan
+            logger.info(f"Invoking Google Gemini ({self.model_name}) for attack path {path.path_id}...")
+            from google import genai
+            from google.genai import types
+
+            from backend.app.planner.prompts import SYSTEM_PLANNER_PROMPT, USER_PLANNER_PROMPT_TEMPLATE
+
+            hop_text = "\n".join(
+                f"  Hop {i}: {h.get('source_id', 'Unknown')} -> {h.get('relationship', 'PIVOT')} -> {h.get('target_id', 'Unknown')}"
+                for i, h in enumerate(path.hops, start=1)
+            )
+            findings_text = "\n".join(
+                f"- {f.rule_id} ({f.severity.value}): {f.title} on {f.target_resource_id}"
+                for f in findings[:5]
+            ) or "None identified"
+
+            user_prompt = USER_PLANNER_PROMPT_TEMPLATE.format(
+                path_id=path.path_id,
+                risk_score=round(path.risk_score, 1),
+                severity=path.target_crown_jewel.type.value if path.target_crown_jewel else "HIGH",
+                entry_id=path.entry_point.id,
+                entry_type=path.entry_point.type.value,
+                target_id=path.target_crown_jewel.id if path.target_crown_jewel else "crown-jewel",
+                target_type=path.target_crown_jewel.type.value if path.target_crown_jewel else "RESOURCE",
+                hop_sequence=hop_text,
+                findings_summary=findings_text,
+            )
+
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model=self.model_name,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PLANNER_PROMPT,
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                ),
+            )
+
+            if response and response.text:
+                import json
+                parsed_data = json.loads(response.text)
+                parsed_data["run_id"] = run_id
+                parsed_data["source_attack_path_id"] = path.path_id
+                parsed_data["planner_provider"] = "gemini"
+                parsed_data["approved_by_policy"] = False
+                plan = CampaignPlan(**parsed_data)
+                logger.info(f"Gemini planning succeeded with {len(plan.stages)} stages.")
+                return plan
+            raise RuntimeError("Gemini API returned an empty response")
+
         except Exception as exc:
             logger.warning(
                 f"Gemini API planning failed: {exc}. Falling back to deterministic planner."

@@ -12,12 +12,17 @@ import {
   Globe,
   Database,
   Cpu,
+  Box,
+  Cloud,
+  Sparkles,
+  Terminal,
 } from "lucide-react";
 import { api } from "@/lib/api/client";
-import { HealthResponse } from "@/types/api";
+import { HealthResponse, IntegrationsStatusResponse } from "@/types/api";
 
 export default function SettingsPage() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [integrations, setIntegrations] = useState<IntegrationsStatusResponse | null>(null);
   const [testing, setTesting] = useState(false);
   const [pingResult, setPingResult] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState(
@@ -28,9 +33,21 @@ export default function SettingsPage() {
     try {
       setTesting(true);
       setPingResult(null);
-      const res = await api.getHealth();
-      setHealth(res);
-      setPingResult(`Connected! Backend version ${res.version} is ${res.status}.`);
+      const [hRes, intRes] = await Promise.allSettled([
+        api.getHealth(),
+        api.getIntegrationsStatus(),
+      ]);
+
+      if (hRes.status === "fulfilled") {
+        setHealth(hRes.value);
+        setPingResult(`Connected! Backend version ${hRes.value.version} is ${hRes.value.status}.`);
+      } else {
+        setPingResult(`Health check failed: ${hRes.reason.message}`);
+      }
+
+      if (intRes.status === "fulfilled") {
+        setIntegrations(intRes.value);
+      }
     } catch (err: any) {
       setPingResult(`Connection failed: ${err.message}`);
     } finally {
@@ -41,6 +58,23 @@ export default function SettingsPage() {
   useEffect(() => {
     testConnection();
   }, []);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "VERIFIED":
+        return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+      case "CONNECTED":
+      case "CONFIGURED":
+        return "bg-sky-500/10 text-sky-400 border-sky-500/30";
+      case "BLOCKED":
+        return "bg-red-500/10 text-red-400 border-red-500/30";
+      case "NOT_VERIFIED":
+        return "bg-amber-500/10 text-amber-400 border-amber-500/30";
+      case "NOT_CONFIGURED":
+      default:
+        return "bg-slate-500/10 text-slate-400 border-slate-500/30";
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl">
@@ -97,7 +131,109 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Section 2: Runtime Environment & Subsystems */}
+      {/* Section 2: External Infrastructure & Integration Readiness */}
+      {integrations && (
+        <div className="rounded-2xl border border-surface-border bg-surface p-5 shadow-panel">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted pb-3 border-b border-surface-border flex items-center gap-2">
+            <Box className="h-4 w-4 text-brand-primary" />
+            External Infrastructure & Integration Readiness
+          </h3>
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Docker Sandbox */}
+            <div className="flex flex-col justify-between p-4 rounded-xl border border-surface-border bg-surface-dark gap-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Box className="h-4 w-4 text-brand-primary" />
+                    <span className="text-xs font-bold text-text-primary">Docker Sandbox Runner</span>
+                  </div>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${getStatusBadge(integrations.docker_sandbox.status)}`}>
+                    {integrations.docker_sandbox.status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-text-muted mt-2 leading-relaxed">
+                  {integrations.docker_sandbox.details}
+                </p>
+              </div>
+              {integrations.docker_sandbox.action_required && (
+                <div className="rounded-lg bg-surface p-2 border border-surface-border text-[10px] text-amber-300 flex items-start gap-1.5 font-mono">
+                  <Terminal className="h-3 w-3 shrink-0 mt-0.5 text-amber-400" />
+                  <span>{integrations.docker_sandbox.action_required}</span>
+                </div>
+              )}
+            </div>
+
+            {/* AWS Cloud Discovery */}
+            <div className="flex flex-col justify-between p-4 rounded-xl border border-surface-border bg-surface-dark gap-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="h-4 w-4 text-brand-secondary" />
+                    <span className="text-xs font-bold text-text-primary">AWS Cloud Discovery</span>
+                  </div>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${getStatusBadge(integrations.aws_cloud.status)}`}>
+                    {integrations.aws_cloud.status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-text-muted mt-2 leading-relaxed">
+                  {integrations.aws_cloud.details}
+                </p>
+              </div>
+              {integrations.aws_cloud.action_required && (
+                <div className="rounded-lg bg-surface p-2 border border-surface-border text-[10px] text-amber-300 flex items-start gap-1.5 font-mono">
+                  <Terminal className="h-3 w-3 shrink-0 mt-0.5 text-amber-400" />
+                  <span>Action: <code>{integrations.aws_cloud.action_required}</code></span>
+                </div>
+              )}
+            </div>
+
+            {/* Gemini LLM Planner */}
+            <div className="flex flex-col justify-between p-4 rounded-xl border border-surface-border bg-surface-dark gap-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-purple-400" />
+                    <span className="text-xs font-bold text-text-primary">Gemini 2.5 Flash Planner</span>
+                  </div>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${getStatusBadge(integrations.gemini_planner.status)}`}>
+                    {integrations.gemini_planner.status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-text-muted mt-2 leading-relaxed">
+                  {integrations.gemini_planner.details}
+                </p>
+              </div>
+              {integrations.gemini_planner.action_required && (
+                <div className="rounded-lg bg-surface p-2 border border-surface-border text-[10px] text-text-muted flex items-start gap-1.5 font-mono">
+                  <Terminal className="h-3 w-3 shrink-0 mt-0.5 text-brand-primary" />
+                  <span>{integrations.gemini_planner.action_required}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Kubernetes Jobs Adapter */}
+            <div className="flex flex-col justify-between p-4 rounded-xl border border-surface-border bg-surface-dark gap-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="h-4 w-4 text-text-muted" />
+                    <span className="text-xs font-bold text-text-primary">Kubernetes Jobs Adapter</span>
+                  </div>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${getStatusBadge(integrations.kubernetes_runner.status)}`}>
+                    {integrations.kubernetes_runner.status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-text-muted mt-2 leading-relaxed">
+                  {integrations.kubernetes_runner.details}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section 3: Runtime Environment & Subsystems */}
       {health && (
         <div className="rounded-2xl border border-surface-border bg-surface p-5 shadow-panel">
           <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted pb-3 border-b border-surface-border flex items-center gap-2">

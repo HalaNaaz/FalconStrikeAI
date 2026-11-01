@@ -1,17 +1,18 @@
 # Falcon Strike-AI — Google Gemini LLM Provider Validation Report
 
-**Document Version:** 1.0.0  
+**Document Version:** 1.1.0  
 **Date:** 2026-11-01  
 **Classification:** AI Architecture & Resilience Verification  
 **PRD Traceability:** `FR-2.1`, `FR-2.2`, `NFR-A1`  
+**Current Status:** **NOT CONFIGURED (API KEY ABSENT)** (Deterministic fallback 100% verified; live Gemini calls active when key is supplied)
 
 ---
 
 ## 1. Architectural Design & Offline Guarantees
 
 Under PRD `FR-2.1`, Falcon Strike-AI generates grounded, multi-stage adversary campaign plans. The platform features an **Agentic Campaign Planner** with pluggable providers:
-1. **`DeterministicPlannerProvider`:** An offline, zero-dependency heuristic planner that maps graph attack paths and misconfiguration findings directly into MITRE ATT&CK technique sequences (`T1078`, `T1526`, `T1098`, `T1071.004`).
-2. **`GeminiPlannerProvider`:** An LLM-augmented planner utilizing Google Gemini models (`gemini-1.5-pro` / `gemini-1.5-flash`) to generate contextual planning rationales, adaptive evasion considerations, and tailored SOC observables.
+1. **`DeterministicPlannerProvider`:** An offline, zero-dependency heuristic planner that maps graph attack paths and misconfiguration findings directly into MITRE ATT&CK technique sequences (`T1078.004`, `T1526`, `T1098`, `T1071.004`).
+2. **`GeminiPlannerProvider`:** An LLM-augmented planner utilizing the official Google GenAI SDK (`google-genai` with `gemini-2.5-flash`) to generate contextual planning rationales, adaptive evasion considerations, and tailored SOC observables based on prompts defined in [prompts.py](file:///c:/Users/Hala/Downloads/Project%20Files/FalconStrikeAI/backend/app/planner/prompts.py).
 
 ### Deterministic Fallback Principle
 Falcon Strike-AI enforces an absolute offline guarantee:
@@ -35,8 +36,8 @@ During local environment assessment:
 - **Probe Result:** Verified. Deterministic fallback generated a valid 4-stage campaign plan with 100% MITRE ATT&CK coverage and expected IOCs.
 
 ### 2.1 Status Determination
-- **Code Implementation:** **VERIFIED** (Both `GeminiPlannerProvider` and `DeterministicPlannerProvider` implemented and tested).
-- **Live LLM Execution:** **BLOCKED (NO API KEY IN HOST ENVIRONMENT)** (Honest reporting: offline deterministic planner active).
+- **Code Implementation:** **VERIFIED** (Both `GeminiPlannerProvider` and `DeterministicPlannerProvider` implemented and tested with official `google-genai` SDK).
+- **Live LLM Execution:** **NOT CONFIGURED (API KEY ABSENT)** (Honest reporting: offline deterministic planner active).
 
 ---
 

@@ -390,3 +390,20 @@ export interface WorkflowExecutionResult {
   report_paths?: Record<string, string>;
 }
 
+export interface IntegrationComponentStatus {
+  name: string;
+  status: "IMPLEMENTED" | "CONFIGURED" | "CONNECTED" | "VERIFIED" | "BLOCKED" | "NOT_CONFIGURED" | "NOT_VERIFIED";
+  connected: boolean;
+  verified: boolean;
+  details: string;
+  action_required?: string | null;
+  metadata?: Record<string, any>;
+}
+
+export interface IntegrationsStatusResponse {
+  docker_sandbox: IntegrationComponentStatus;
+  aws_cloud: IntegrationComponentStatus;
+  gemini_planner: IntegrationComponentStatus;
+  kubernetes_runner: IntegrationComponentStatus;
+}
+

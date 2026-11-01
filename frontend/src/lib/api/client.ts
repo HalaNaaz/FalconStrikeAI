@@ -26,6 +26,7 @@ import {
   AuditChainVerificationResult,
   SOCReportData,
   WorkflowExecutionResult,
+  IntegrationsStatusResponse,
 } from "@/types/api";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -249,6 +250,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ mode, dry_run: dryRun }),
     }),
+
+  // Integrations & System Status
+  getIntegrationsStatus: () => request<IntegrationsStatusResponse>("/api/v1/integrations/status"),
 
   // Authentication & Session
   login: async (operatorId: string, role = "operator", targetAccountId = "000000000000") => {

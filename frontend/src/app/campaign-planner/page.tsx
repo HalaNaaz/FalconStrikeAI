@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api/client";
-import { CampaignPlan, AttackPath, CampaignStage } from "@/types/api";
+import { CampaignPlan, AttackPath, CampaignStage, IntegrationsStatusResponse } from "@/types/api";
 
 function CampaignPlannerContent() {
   const searchParams = useSearchParams();
@@ -30,6 +30,7 @@ function CampaignPlannerContent() {
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignPlan | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string>(initialPathId || "");
   const [selectedProvider, setSelectedProvider] = useState<string>("deterministic");
+  const [integrationStatus, setIntegrationStatus] = useState<IntegrationsStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -38,10 +39,15 @@ function CampaignPlannerContent() {
     try {
       setLoading(true);
       setErrorMsg(null);
-      const [campsRes, pathsRes] = await Promise.allSettled([
+      const [campsRes, pathsRes, integRes] = await Promise.allSettled([
         api.getCampaigns(),
         api.getAttackPaths(),
+        api.getIntegrationsStatus(),
       ]);
+
+      if (integRes.status === "fulfilled") {
+        setIntegrationStatus(integRes.value);
+      }
 
       let paths: AttackPath[] = [];
       if (pathsRes.status === "fulfilled") {
@@ -108,13 +114,13 @@ function CampaignPlannerContent() {
               className="bg-transparent font-mono text-brand-primary focus:outline-none"
             >
               <option value="deterministic" className="bg-surface text-text-primary">
-                Deterministic Engine (Offline Safe)
+                Deterministic Engine (Offline Safe — ACTIVE)
               </option>
               <option value="gemini" className="bg-surface text-text-primary">
-                Gemini Pro (Google GenAI)
+                Gemini 2.5 Flash {integrationStatus?.gemini_planner.connected ? "(Connected)" : "(Offline Fallback - API Key Required)"}
               </option>
               <option value="openai" className="bg-surface text-text-primary">
-                GPT-4o (OpenAI API)
+                GPT-4o (OpenAI API - Offline Fallback)
               </option>
             </select>
           </div>
@@ -129,6 +135,15 @@ function CampaignPlannerContent() {
           </button>
         </div>
       </div>
+
+      {selectedProvider === "gemini" && !integrationStatus?.gemini_planner.connected && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-300">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+          <span>
+            <strong>Gemini API Key Required:</strong> GEMINI_API_KEY is not set in the host environment. Generating with this option will automatically use the <strong>Deterministic Offline Fallback</strong> engine.
+          </span>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
@@ -178,9 +193,21 @@ function CampaignPlannerContent() {
                     <p className="text-xs font-semibold text-text-primary mt-1 line-clamp-1">
                       {camp.objective || "Adversary Emulation Campaign"}
                     </p>
-                    <div className="flex items-center justify-between mt-2 text-[10px] font-mono text-text-muted">
-                      <span>Provider: {camp.planner_provider}</span>
-                      <span className="text-emerald-400">Validated ✓</span>
+                    <div className="flex items-center justify-between mt-2 text-[10px] font-mono">
+                      {camp.planner_provider?.includes("fallback") ? (
+                        <span className="text-amber-400 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30">
+                          Offline Fallback
+                        </span>
+                      ) : camp.planner_provider === "gemini" ? (
+                        <span className="text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+                          Gemini 2.5 Flash
+                        </span>
+                      ) : (
+                        <span className="text-brand-primary px-1.5 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/30">
+                          Deterministic Engine
+                        </span>
+                      )}
+                      <span className="text-emerald-400 font-mono">Validated ✓</span>
                     </div>
                   </div>
                 );
