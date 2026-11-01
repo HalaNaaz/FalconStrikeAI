@@ -6,6 +6,7 @@ from backend.app.core.config import Settings
 from backend.app.core.exceptions import (
     AccountNotAllowlistedError,
     AuthorizationTokenError,
+    InsecureConfigurationError,
 )
 
 
@@ -45,3 +46,69 @@ def test_custom_comma_separated_allowlist() -> None:
     cfg = Settings(allowlisted_accounts="111111111111,222222222222")
     assert "111111111111" in cfg.allowlisted_accounts
     assert "222222222222" in cfg.allowlisted_accounts
+
+
+# Phase 2: Production Secret Key Guard Tests
+
+
+def test_production_rejects_missing_secret() -> None:
+    """Verify production mode rejects empty or whitespace-only secret."""
+    with pytest.raises(InsecureConfigurationError) as exc:
+        Settings(environment="production", auth_secret_key="")
+    assert "missing or empty" in str(exc.value)
+
+
+def test_production_rejects_default_secret() -> None:
+    """Verify production mode rejects known default/development fallback secrets."""
+    with pytest.raises(InsecureConfigurationError) as exc:
+        Settings(
+            environment="production",
+            auth_secret_key="falcon-strike-dev-secret-do-not-use-in-production",
+        )
+    assert "cannot use default or development values" in str(exc.value)
+
+
+def test_production_rejects_weak_secret() -> None:
+    """Verify production mode rejects secrets with less than 32 characters."""
+    with pytest.raises(InsecureConfigurationError) as exc:
+        Settings(
+            environment="production",
+            auth_secret_key="short-secret-only-24-bytes",
+        )
+    assert "minimum key length of 32 characters" in str(exc.value)
+
+
+def test_production_accepts_strong_secret() -> None:
+    """Verify production mode accepts an independently generated high-entropy secret >= 32 chars."""
+    strong_key = "prod-super-secure-high-entropy-secret-key-998877"
+    cfg = Settings(
+        environment="production",
+        auth_secret_key=strong_key,
+        api_debug=False,
+    )
+    assert cfg.environment == "production"
+    assert cfg.auth_secret_key == strong_key
+
+
+def test_production_rejects_api_debug() -> None:
+    """Verify production mode rejects enabled debug mode."""
+    strong_key = "prod-super-secure-high-entropy-secret-key-998877"
+    with pytest.raises(InsecureConfigurationError) as exc:
+        Settings(
+            environment="production",
+            auth_secret_key=strong_key,
+            api_debug=True,
+        )
+    assert "FALCON_API_DEBUG cannot be enabled in production" in str(exc.value)
+
+
+def test_development_mode_permits_dev_secret() -> None:
+    """Verify development mode permits development fallback secret for local ergonomics."""
+    cfg = Settings(environment="development")
+    assert cfg.auth_secret_key == "falcon-strike-dev-secret-do-not-use-in-production"
+
+
+def test_test_mode_permits_test_secret() -> None:
+    """Verify test mode permits documented test secret."""
+    cfg = Settings(environment="test", auth_secret_key="test-secret-key-123")
+    assert cfg.auth_secret_key == "test-secret-key-123"

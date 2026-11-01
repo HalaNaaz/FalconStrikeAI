@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from backend.app.core.exceptions import (
     AccountNotAllowlistedError,
     AuthorizationTokenError,
+    InsecureConfigurationError,
 )
 
 
@@ -51,6 +52,34 @@ class Settings(BaseSettings):
     auth_secret_key: str = Field(
         default="falcon-strike-dev-secret-do-not-use-in-production",
         description="Secret key used for HMAC-SHA256 token verification in lab testing",
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="Optional master API key for headless service authentication",
+    )
+    jwt_issuer: str = Field(
+        default="falcon-strike-ai",
+        description="JWT token issuer identifier",
+    )
+    jwt_algorithm: str = Field(
+        default="HS256",
+        description="JWT cryptographic algorithm",
+    )
+    jwt_expiration_minutes: int = Field(
+        default=60,
+        description="Default operator session expiration window in minutes",
+    )
+
+    # Insecure fallback blocklist for production guard
+    KNOWN_INSECURE_SECRETS: ClassVar[tuple[str, ...]] = (
+        "falcon-strike-dev-secret-do-not-use-in-production",
+        "test-secret-key-123",
+        "changeme",
+        "secret",
+        "password",
+        "default",
+        "12345678",
+        "admin",
     )
 
     # Blast-Radius Safety Caps (NFR-S5)
@@ -119,6 +148,50 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [account.strip() for account in value.split(",") if account.strip()]
         return value
+
+    def model_post_init(self, __context: object) -> None:
+        """Post-initialization validation hook enforcing production safety checks."""
+        super().model_post_init(__context)
+        self.validate_production_configuration()
+
+    def validate_production_configuration(self) -> None:
+        """Enforce strict production configuration validation.
+
+        In production:
+        - auth_secret_key must be configured and not equal any default/fallback value.
+        - auth_secret_key must satisfy minimum entropy requirement (>= 32 chars).
+        - api_debug must not be enabled.
+        Never reveals the actual secret in exceptions or logs.
+        """
+        env_lower = self.environment.lower().strip()
+        if env_lower in ("production", "prod"):
+            # 1. Missing or empty secret check
+            if not self.auth_secret_key or not self.auth_secret_key.strip():
+                raise InsecureConfigurationError(
+                    "Production configuration violation: FALCON_AUTH_SECRET_KEY is missing or empty. "
+                    "Production deployment requires an explicitly configured, high-entropy secret key."
+                )
+
+            # 2. Known default or insecure fallback check
+            cleaned_secret = self.auth_secret_key.strip()
+            if cleaned_secret in self.KNOWN_INSECURE_SECRETS or "dev" in cleaned_secret.lower():
+                raise InsecureConfigurationError(
+                    "Production configuration violation: FALCON_AUTH_SECRET_KEY cannot use default or "
+                    "development values. Provide an independently generated cryptographic secret."
+                )
+
+            # 3. Minimum length / entropy check (>= 32 characters)
+            if len(cleaned_secret) < 32:
+                raise InsecureConfigurationError(
+                    "Production configuration violation: FALCON_AUTH_SECRET_KEY is too short. "
+                    "Production requires a minimum key length of 32 characters."
+                )
+
+            # 4. Debug mode check
+            if self.api_debug:
+                raise InsecureConfigurationError(
+                    "Production configuration violation: FALCON_API_DEBUG cannot be enabled in production."
+                )
 
     def is_account_allowlisted(self, account_id: str) -> bool:
         """Check if an AWS Account ID is permitted by the compiled or configured allowlist."""
