@@ -1,14 +1,15 @@
-"""Exporters serializing SOC reports into JSON, Markdown, and HTML artifacts (FR-5.3)."""
+"""Exporters serializing SOC reports into JSON, Markdown, HTML, and PDF artifacts (FR-5.3)."""
 
 from pathlib import Path
 
 from backend.app.core.logging import logger
 from backend.app.reporting.models import SOCReportData
+from backend.app.reporting.pdf_generator import generate_pdf_report
 from backend.app.reporting.templates import render_html_report, render_markdown_report
 
 
 class ReportExporter:
-    """Exports structured SOC reports to JSON, Markdown, and HTML formats."""
+    """Exports structured SOC reports to JSON, Markdown, HTML, and PDF formats."""
 
     @staticmethod
     def export_json(report: SOCReportData, file_path: Path | str | None = None) -> str:
@@ -43,3 +44,10 @@ class ReportExporter:
             logger.info(f"Saved SOC HTML report to {target}")
         return html_output
 
+    @staticmethod
+    def export_pdf(report: SOCReportData, file_path: Path | str | None = None) -> bytes:
+        """Render SOC report as native PDF binary stream and optionally save to disk (FR-5.3)."""
+        pdf_bytes = generate_pdf_report(report, target_file=file_path)
+        if file_path:
+            logger.info(f"Saved SOC PDF report to {file_path}")
+        return pdf_bytes

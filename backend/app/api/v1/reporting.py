@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from backend.app.core.audit import audit_logger
@@ -96,13 +96,13 @@ def get_soc_report(run_id: str) -> SOCReportData:
 
 @router.get(
     "/{run_id}/export",
-    summary="Export SOC report as Markdown or HTML",
+    summary="Export SOC report as Markdown, HTML, or PDF (FR-5.3)",
 )
 def export_report_format(
     run_id: str,
-    format: str = Query("markdown", description="Export format: markdown or html"),
-) -> dict[str, Any]:
-    """Retrieve formatted report text."""
+    format: str = Query("markdown", description="Export format: markdown, html, or pdf"),
+) -> Any:
+    """Retrieve formatted report content or download PDF binary."""
     report = _cached_soc_reports.get(run_id)
     if not report:
         raise HTTPException(
@@ -110,7 +110,15 @@ def export_report_format(
             detail=f"SOC report for run '{run_id}' not found.",
         )
 
-    if format.lower() == "html":
+    fmt = format.lower()
+    if fmt == "pdf":
+        pdf_bytes = ReportExporter.export_pdf(report)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="soc_report_{run_id}.pdf"'},
+        )
+    elif fmt == "html":
         content = ReportExporter.export_html(report)
         media_type = "text/html"
     else:
@@ -119,8 +127,29 @@ def export_report_format(
 
     return {
         "run_id": run_id,
-        "format": format.lower(),
+        "format": fmt,
         "media_type": media_type,
         "content": content,
     }
+
+
+@router.get(
+    "/{run_id}/pdf",
+    summary="Directly download compiled SOC report as binary PDF (FR-5.3)",
+    response_class=Response,
+)
+def download_soc_report_pdf(run_id: str) -> Response:
+    """Stream native multi-page ReportLab PDF report for SOC and executive review."""
+    report = _cached_soc_reports.get(run_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"SOC report for run '{run_id}' not found.",
+        )
+    pdf_bytes = ReportExporter.export_pdf(report)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="soc_report_{run_id}.pdf"'},
+    )
 

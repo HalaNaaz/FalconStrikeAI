@@ -312,11 +312,13 @@ class EndToEndWorkflow:
             json_path = reports_dir / f"soc_report_{run_id}.json"
             md_path = reports_dir / f"soc_report_{run_id}.md"
             html_path = reports_dir / f"soc_report_{run_id}.html"
+            pdf_path = reports_dir / f"soc_report_{run_id}.pdf"
             audit_path = audit_dir / f"audit_chain_{run_id}.jsonl"
 
             ReportExporter.export_json(soc_report, file_path=json_path)
             ReportExporter.export_markdown(soc_report, file_path=md_path)
             ReportExporter.export_html(soc_report, file_path=html_path)
+            ReportExporter.export_pdf(soc_report, file_path=pdf_path)
             audit_logger.export_jsonl(run_id=run_id, file_path=audit_path)
 
             end_perf = datetime.now(UTC)
@@ -346,6 +348,7 @@ class EndToEndWorkflow:
                     "json_report": str(json_path),
                     "markdown_report": str(md_path),
                     "html_report": str(html_path),
+                    "pdf_report": str(pdf_path),
                     "audit_chain_jsonl": str(audit_path),
                 },
                 summary={

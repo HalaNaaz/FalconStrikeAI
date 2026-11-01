@@ -1,5 +1,8 @@
 """Unit tests for SOC report generation, templates, and multi-format exporters (FR-5.2, FR-5.3)."""
 
+import pytest
+from httpx import AsyncClient
+
 from backend.app.core.audit_models import AuditChainVerificationResult
 from backend.app.detection.models import (
     CorrelatedTechniqueResult,
@@ -170,4 +173,164 @@ class TestSOCReporting:
         assert f"Falcon Strike-AI SOC Report - {run_id}" in html_str
         assert "100.0%" in html_str
         assert "15.0s" in html_str
+
+        # 4. Native PDF Export (FR-5.3)
+        pdf_file = f"{base_path}/report.pdf"
+        pdf_bytes = ReportExporter.export_pdf(report, file_path=pdf_file)
+        assert isinstance(pdf_bytes, bytes)
+        assert len(pdf_bytes) > 2000
+        assert pdf_bytes.startswith(b"%PDF-")
+        with open(pdf_file, "rb") as f:
+            disk_bytes = f.read()
+        assert disk_bytes == pdf_bytes
+
+    def test_pdf_export_edge_cases(self, tmp_path: object) -> None:
+        """Verify PDF export resiliency under edge cases (0% coverage, empty paths, special characters)."""
+        run_id = "RUN-EDGE-PDF-99"
+        camp_id = "CAMP-EDGE-99"
+
+        plan = CampaignPlan(
+            campaign_id=camp_id,
+            run_id=run_id,
+            source_attack_path_id="PATH-EDGE",
+            objective="Edge case test: special chars <>&'\" and zero detections",
+            stages=[],
+            selected_techniques=[],
+            risk_summary="None",
+            planning_rationale="Minimal edge case",
+            approved_by_policy=True,
+        )
+
+        execution = CampaignExecutionRecord(
+            run_id=run_id,
+            campaign_id=camp_id,
+            mode=ExecutionMode.DRY_RUN,
+            status=ExecutionStatus.FAILED,
+            total_stages=0,
+            completed_stages=0,
+            failed_stages=0,
+            duration_ms=0.0,
+        )
+
+        correlation = DetectionCorrelationReport(
+            run_id=run_id,
+            campaign_id=camp_id,
+            total_executed_techniques=0,
+            detected_count=0,
+            partially_detected_count=0,
+            missed_count=0,
+            coverage_percentage=0.0,
+            mean_time_to_detect_seconds=None,
+            techniques=[],
+        )
+
+        teardown = TeardownResult(
+            run_id=run_id,
+            status="SKIPPED",
+            actions_attempted=0,
+            actions_succeeded=0,
+            baseline_verified=True,
+        )
+
+        audit_verification = AuditChainVerificationResult(
+            is_valid=False,
+            run_id=run_id,
+            total_records=0,
+            verified_records=0,
+            tamper_details=["Simulated missing genesis record for edge case"],
+        )
+
+        report = SOCReportGenerator.generate_report(
+            plan=plan,
+            execution=execution,
+            correlation=correlation,
+            synthetic_iocs=[],
+            teardown_result=teardown,
+            audit_verification=audit_verification,
+            target_account="000000000000",
+            environment_provenance="SYNTHETIC_DATA",
+            runner_provenance="IN_MEMORY_SIMULATION",
+            detection_provenance="DETECTION_STUB",
+        )
+
+        pdf_bytes = ReportExporter.export_pdf(report)
+        assert isinstance(pdf_bytes, bytes)
+        assert pdf_bytes.startswith(b"%PDF-")
+        assert len(pdf_bytes) > 1000
+
+    @pytest.mark.asyncio
+    async def test_reporting_api_pdf_endpoints(self, async_client: AsyncClient) -> None:
+        """Verify GET /reporting/{run_id}/export?format=pdf and GET /reporting/{run_id}/pdf."""
+        from backend.app.api.v1.reporting import _cached_soc_reports
+
+        run_id = "RUN-REP-API-01"
+        plan = CampaignPlan(
+            campaign_id="CAMP-API-01",
+            run_id=run_id,
+            source_attack_path_id="PATH-01",
+            objective="API PDF export test",
+            stages=[],
+            selected_techniques=[],
+            risk_summary="Low",
+            planning_rationale="API test",
+            approved_by_policy=True,
+        )
+        execution = CampaignExecutionRecord(
+            run_id=run_id,
+            campaign_id="CAMP-API-01",
+            mode=ExecutionMode.DRY_RUN,
+            status=ExecutionStatus.COMPLETED,
+            total_stages=0,
+            completed_stages=0,
+            failed_stages=0,
+            duration_ms=10.0,
+        )
+        correlation = DetectionCorrelationReport(
+            run_id=run_id,
+            campaign_id="CAMP-API-01",
+            total_executed_techniques=0,
+            detected_count=0,
+            partially_detected_count=0,
+            missed_count=0,
+            coverage_percentage=0.0,
+            mean_time_to_detect_seconds=None,
+            techniques=[],
+        )
+        teardown = TeardownResult(
+            run_id=run_id,
+            status="COMPLETED",
+            actions_attempted=0,
+            actions_succeeded=0,
+            baseline_verified=True,
+        )
+        audit_ver = AuditChainVerificationResult(
+            is_valid=True,
+            run_id=run_id,
+            total_records=1,
+            verified_records=1,
+        )
+
+        test_report = SOCReportGenerator.generate_report(
+            plan=plan,
+            execution=execution,
+            correlation=correlation,
+            synthetic_iocs=[],
+            teardown_result=teardown,
+            audit_verification=audit_ver,
+            target_account="000000000000",
+        )
+        _cached_soc_reports[run_id] = test_report
+
+        # 1. Test /export?format=pdf
+        res_export = await async_client.get(f"/api/v1/reporting/{run_id}/export?format=pdf")
+        assert res_export.status_code == 200
+        assert res_export.headers["content-type"] == "application/pdf"
+        assert f'attachment; filename="soc_report_{run_id}.pdf"' in res_export.headers.get("content-disposition", "")
+        assert res_export.content.startswith(b"%PDF-")
+
+        # 2. Test dedicated /pdf endpoint
+        res_pdf = await async_client.get(f"/api/v1/reporting/{run_id}/pdf")
+        assert res_pdf.status_code == 200
+        assert res_pdf.headers["content-type"] == "application/pdf"
+        assert res_pdf.content.startswith(b"%PDF-")
 
