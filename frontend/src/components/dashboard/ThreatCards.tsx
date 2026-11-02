@@ -119,11 +119,11 @@ export function ThreatCards({ findings = [], attackPaths = [] }: ThreatCardsProp
                       {finding.severity}
                     </span>
                     <span className="text-xs font-semibold text-text-primary truncate">
-                      {finding.rule_name}
+                      {finding.rule_name || finding.category || "Misconfiguration"}
                     </span>
                   </div>
                   <p className="text-[11px] text-text-secondary truncate">
-                    {finding.description}
+                    {finding.description || finding.explanation || "Security exposure detected"}
                   </p>
                 </div>
 

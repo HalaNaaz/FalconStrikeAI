@@ -61,6 +61,7 @@ class AWSNetworkCollector(BaseCollector):
 
     def collect(self, account_id: str) -> tuple[dict[str, list[Any]], list[CollectionError]]:
         """Collect EC2 instances and Security Groups using read-only Describe APIs."""
+        self.validate_scope(account_id)
         instances: list[EC2InstanceMetadata] = []
         security_groups: list[SecurityGroupMetadata] = []
         errors: list[CollectionError] = []

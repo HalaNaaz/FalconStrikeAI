@@ -193,7 +193,14 @@ class GeminiPlannerProvider(PlannerProvider):
         findings: list[MisconfigurationFinding],
         run_id: str,
     ) -> CampaignPlan:
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        from backend.app.core.config import settings
+
+        api_key = (
+            os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+            or os.getenv("FALCON_GEMINI_API_KEY")
+            or getattr(settings, "gemini_api_key", None)
+        )
         if not api_key:
             logger.info(
                 "No Gemini API key detected in environment. Using deterministic planner fallback."
@@ -210,47 +217,89 @@ class GeminiPlannerProvider(PlannerProvider):
 
             from backend.app.planner.prompts import SYSTEM_PLANNER_PROMPT, USER_PLANNER_PROMPT_TEMPLATE
 
-            hop_text = "\n".join(
-                f"  Hop {i}: {h.get('source_id', 'Unknown')} -> {h.get('relationship', 'PIVOT')} -> {h.get('target_id', 'Unknown')}"
-                for i, h in enumerate(path.hops, start=1)
-            )
+            # Format hops from ordered relationships
+            if hasattr(path, "ordered_relationships") and path.ordered_relationships:
+                hop_text = "\n".join(
+                    f"  Hop {i}: {e.source_id} -> {e.type.value if hasattr(e.type, 'value') else e.type} -> {e.target_id}"
+                    for i, e in enumerate(path.ordered_relationships, start=1)
+                )
+            elif hasattr(path, "hops") and path.hops:
+                hop_text = "\n".join(
+                    f"  Hop {i}: {h.get('source_id', 'Unknown')} -> {h.get('relationship', 'PIVOT')} -> {h.get('target_id', 'Unknown')}"
+                    for i, h in enumerate(path.hops, start=1)
+                )
+            else:
+                target_rel = getattr(path, "target_resource", getattr(path, "target_crown_jewel", None))
+                target_str = target_rel.id if target_rel else "target"
+                hop_text = f"  Direct pivot: {path.entry_point.id} -> {target_str}"
+
+            target_node = getattr(path, "target_resource", getattr(path, "target_crown_jewel", None))
+            target_id = target_node.id if target_node else "target-crown-jewel"
+            target_type = target_node.type.value if target_node and hasattr(target_node.type, "value") else "RESOURCE"
+
             findings_text = "\n".join(
-                f"- {f.rule_id} ({f.severity.value}): {f.title} on {f.target_resource_id}"
+                f"- {getattr(f, 'rule_name', getattr(f, 'category', 'EXPOSURE'))} ({f.severity.value if hasattr(f.severity, 'value') else f.severity}): {getattr(f, 'description', getattr(f, 'explanation', 'Misconfiguration'))} on {getattr(f, 'target_node_id', getattr(f, 'resource_id', 'asset'))}"
                 for f in findings[:5]
             ) or "None identified"
 
+            severity_val = path.severity.value if hasattr(path.severity, "value") else str(path.severity)
             user_prompt = USER_PLANNER_PROMPT_TEMPLATE.format(
                 path_id=path.path_id,
                 risk_score=round(path.risk_score, 1),
-                severity=path.target_crown_jewel.type.value if path.target_crown_jewel else "HIGH",
+                severity=severity_val,
                 entry_id=path.entry_point.id,
-                entry_type=path.entry_point.type.value,
-                target_id=path.target_crown_jewel.id if path.target_crown_jewel else "crown-jewel",
-                target_type=path.target_crown_jewel.type.value if path.target_crown_jewel else "RESOURCE",
+                entry_type=path.entry_point.type.value if hasattr(path.entry_point.type, "value") else str(path.entry_point.type),
+                target_id=target_id,
+                target_type=target_type,
                 hop_sequence=hop_text,
                 findings_summary=findings_text,
             )
 
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PLANNER_PROMPT,
-                    response_mime_type="application/json",
-                    temperature=0.2,
-                ),
-            )
+            model_to_use = self.model_name
+            try:
+                response = client.models.generate_content(
+                    model=model_to_use,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PLANNER_PROMPT,
+                        response_mime_type="application/json",
+                        temperature=0.2,
+                    ),
+                )
+            except Exception as api_err:
+                err_str = str(api_err)
+                if "404" in err_str or "not available" in err_str.lower() or "not_found" in err_str.lower():
+                    logger.info(f"Model {model_to_use} unavailable; falling back to gemini-flash-latest...")
+                    model_to_use = "gemini-flash-latest"
+                    response = client.models.generate_content(
+                        model=model_to_use,
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_PLANNER_PROMPT,
+                            response_mime_type="application/json",
+                            temperature=0.2,
+                        ),
+                    )
+                else:
+                    raise api_err
 
             if response and response.text:
                 import json
-                parsed_data = json.loads(response.text)
+
+                raw_text = response.text.strip()
+                if raw_text.startswith("```"):
+                    raw_text = raw_text.strip("`")
+                    if raw_text.startswith("json"):
+                        raw_text = raw_text[4:].strip()
+
+                parsed_data = json.loads(raw_text)
                 parsed_data["run_id"] = run_id
                 parsed_data["source_attack_path_id"] = path.path_id
                 parsed_data["planner_provider"] = "gemini"
                 parsed_data["approved_by_policy"] = False
                 plan = CampaignPlan(**parsed_data)
-                logger.info(f"Gemini planning succeeded with {len(plan.stages)} stages.")
+                logger.info(f"Gemini planning succeeded with {len(plan.stages)} stages using {model_to_use}.")
                 return plan
             raise RuntimeError("Gemini API returned an empty response")
 

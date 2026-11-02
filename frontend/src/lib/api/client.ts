@@ -6,6 +6,7 @@ import {
   GraphSummary,
   GraphExport,
   AnalyzeResponse,
+  MisconfigurationFinding,
   AttackPath,
   AttackPathDiscoveryResponse,
   CampaignPlan,
@@ -121,12 +122,50 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 }
 
+export function normalizeFinding(raw: any): MisconfigurationFinding {
+  const targetId = String(raw?.target_node_id || raw?.resource_id || "");
+  const desc = String(raw?.description || raw?.explanation || "Security exposure detected");
+  const cat = String(raw?.category || raw?.rule_name || "WILDCARD_PERMISSIONS");
+  const ruleName = String(raw?.rule_name || cat);
+  const ruleId = String(raw?.rule_id || `RULE-${cat}`);
+  const findingId = String(raw?.finding_id || `FIND-${Math.random().toString(36).substring(2, 8).toUpperCase()}`);
+  const sev = (raw?.severity as any) || "MEDIUM";
+
+  return {
+    finding_id: findingId,
+    resource_id: String(raw?.resource_id || targetId),
+    target_node_id: targetId,
+    category: cat,
+    rule_id: ruleId,
+    rule_name: ruleName,
+    severity: sev,
+    description: desc,
+    explanation: String(raw?.explanation || desc),
+    remediation: String(raw?.remediation || "Apply principle of least privilege."),
+    evidence: raw?.evidence || raw?.details || {},
+    details: raw?.details || raw?.evidence || {},
+    source_provenance: String(raw?.source_provenance || "analyzer"),
+  };
+}
+
+export function normalizeAnalyzeResponse(res: any): AnalyzeResponse {
+  const rawList = Array.isArray(res?.findings) ? res.findings : [];
+  const findings = rawList.map(normalizeFinding);
+  return {
+    total_findings: typeof res?.total_findings === "number" ? res.total_findings : findings.length,
+    findings_by_severity: res?.findings_by_severity || {},
+    findings,
+  };
+}
+
 export const api = {
   // System Health
   getHealth: () => request<HealthResponse>("/health"),
 
   // Collectors
   getCollectorStatus: () => request<CollectorStatusResponse>("/api/v1/collectors/status"),
+  getCollectorFindings: () =>
+    request<AnalyzeResponse>("/api/v1/collectors/findings").then(normalizeAnalyzeResponse),
   collectEnvironment: (req: CollectRequest = {}) =>
     request<CollectResponse>("/api/v1/environment/collect", {
       method: "POST",
@@ -136,7 +175,12 @@ export const api = {
   // Property Graph
   getGraphSummary: () => request<GraphSummary>("/api/v1/graph/summary"),
   exportGraph: () => request<GraphExport>("/api/v1/graph/export"),
-  analyzeGraph: () => request<AnalyzeResponse>("/api/v1/graph/analyze", { method: "POST" }),
+  analyzeGraph: () =>
+    request<AnalyzeResponse>("/api/v1/graph/analyze", { method: "POST" }).then(
+      normalizeAnalyzeResponse
+    ),
+  getGraphFindings: () =>
+    request<AnalyzeResponse>("/api/v1/graph/findings").then(normalizeAnalyzeResponse),
 
   // Attack Paths
   getAttackPaths: () => request<AttackPath[]>("/api/v1/attack-paths"),

@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class NodeType(StrEnum):
@@ -90,16 +90,55 @@ class MisconfigurationFinding(BaseModel):
 
     finding_id: str = Field(default_factory=lambda: f"FIND-{uuid4().hex[:8].upper()}")
     resource_id: str = Field(description="Resource ID or ARN where finding was detected")
+    target_node_id: str = Field(default="", description="Graph target node ID or ARN (contract alias)")
     category: FindingCategory
+    rule_id: str = Field(default="", description="Identifier of the detection rule")
+    rule_name: str = Field(default="", description="Human-readable rule name")
     severity: FindingSeverity
     explanation: str = Field(description="Concise description of the exposure condition")
+    description: str = Field(default="", description="Concise description (contract alias)")
     evidence: dict[str, Any] = Field(
         default_factory=dict, description="Supporting configuration facts"
+    )
+    details: dict[str, Any] = Field(
+        default_factory=dict, description="Supporting configuration facts (contract alias)"
     )
     remediation: str = Field(description="Recommended corrective action")
     source_provenance: str = Field(
         default="graph_misconfiguration_analyzer", description="Detector provenance"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_contract_aliases(cls, data: Any) -> Any:
+        """Ensure full compatibility between backend and frontend data contract fields."""
+        if isinstance(data, dict):
+            # Target ID synchronization
+            res_id = data.get("resource_id") or data.get("target_node_id") or ""
+            data["resource_id"] = str(res_id)
+            data["target_node_id"] = str(res_id)
+
+            # Description synchronization
+            desc = data.get("explanation") or data.get("description") or ""
+            data["explanation"] = str(desc)
+            data["description"] = str(desc)
+
+            # Category and rule identification
+            cat = data.get("category") or data.get("rule_name") or "WILDCARD_PERMISSIONS"
+            if isinstance(cat, FindingCategory):
+                cat_str = cat.value
+            else:
+                cat_str = str(cat)
+            data["category"] = cat_str
+            data["rule_name"] = data.get("rule_name") or cat_str
+            data["rule_id"] = data.get("rule_id") or f"RULE-{cat_str}"
+
+            # Evidence and details dictionary synchronization
+            ev = data.get("evidence") or data.get("details") or {}
+            data["evidence"] = ev
+            data["details"] = ev
+
+        return data
 
 
 class GraphSummary(BaseModel):

@@ -77,13 +77,18 @@ export interface GraphExport {
 
 export interface MisconfigurationFinding {
   finding_id: string;
+  resource_id: string;
+  target_node_id: string;
+  category: string;
   rule_id: string;
   rule_name: string;
   severity: Severity;
-  target_node_id: string;
   description: string;
+  explanation: string;
   remediation: string;
+  evidence?: Record<string, any>;
   details?: Record<string, any>;
+  source_provenance?: string;
 }
 
 export interface AnalyzeResponse {

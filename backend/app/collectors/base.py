@@ -20,6 +20,12 @@ class BaseCollector(ABC):
         """Name of the AWS service being collected (e.g., iam, ec2, s3)."""
         pass
 
+    def validate_scope(self, account_id: str) -> None:
+        """Enforce account allowlist prior to any SDK or fixture calls (NFR-S1)."""
+        from backend.app.core.config import settings
+
+        settings.assert_account_allowlisted(account_id)
+
     @abstractmethod
     def collect(self, account_id: str) -> tuple[list[Any], list[CollectionError]]:
         """Collect read-only resource metadata.

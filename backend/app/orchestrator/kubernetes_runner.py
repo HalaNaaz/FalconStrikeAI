@@ -22,7 +22,7 @@ class KubernetesJobRunner(BaseRunner):
     """Executes emulation techniques within ephemeral Kubernetes Batch/v1 Jobs.
 
     Security Containment Guarantees (NFR-P4, FR-3.2):
-    - Dedicated namespace (default: 'falconstrike-sandbox')
+    - Dedicated namespace (default: 'falcon-strike-lab')
     - Non-root pod security context (UID 10001 / GID 10001)
     - Dropped capabilities (ALL) and allowPrivilegeEscalation: false
     - Read-only root filesystem
@@ -32,7 +32,7 @@ class KubernetesJobRunner(BaseRunner):
 
     def __init__(
         self,
-        namespace: str = "falconstrike-sandbox",
+        namespace: str = "falcon-strike-lab",
         image: str = "falconstrike-sandbox:latest",
     ) -> None:
         self.namespace = namespace
@@ -44,7 +44,7 @@ class KubernetesJobRunner(BaseRunner):
         return "kubernetes_job"
 
     def is_available(self) -> bool:
-        """Check whether local or in-cluster Kubernetes config is accessible."""
+        """Check whether local or in-cluster Kubernetes config is accessible and cluster is reachable."""
         try:
             from kubernetes import client, config  # type: ignore
 
@@ -53,6 +53,9 @@ class KubernetesJobRunner(BaseRunner):
             except Exception:
                 config.load_kube_config()
             v1 = client.BatchV1Api()
+            # Actively probe cluster reachability with short timeout
+            core_v1 = client.CoreV1Api()
+            core_v1.get_api_resources(_request_timeout=2)
             self._k8s_client = v1
             return True
         except Exception as exc:
@@ -104,6 +107,7 @@ class KubernetesJobRunner(BaseRunner):
                             {
                                 "name": "sandbox-runner",
                                 "image": self.image,
+                                "imagePullPolicy": "IfNotPresent",
                                 "command": [
                                     "python",
                                     "-m",

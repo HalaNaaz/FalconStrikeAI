@@ -47,6 +47,8 @@ async def export_graph() -> dict[str, Any]:
 
 
 @router.post("/graph/analyze", response_model=AnalyzeResponse)
+@router.get("/graph/analyze", response_model=AnalyzeResponse)
+@router.get("/graph/findings", response_model=AnalyzeResponse)
 async def analyze_graph() -> dict[str, Any]:
     """Run misconfiguration analysis and return exposure findings."""
     sev_counts = Counter(f.severity.value for f in app_state.findings)

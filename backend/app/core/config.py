@@ -1,7 +1,15 @@
 """Configuration management for Falcon Strike-AI using Pydantic Settings."""
 
+import os
 from pathlib import Path
 from typing import ClassVar
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,7 +47,7 @@ class Settings(BaseSettings):
         default="000000000000",
         description="Target AWS Account ID for emulation",
     )
-    allowlisted_accounts: list[str] = Field(
+    allowlisted_accounts: list[str] | str = Field(
         default_factory=lambda: ["000000000000", "123456789012"],
         description="Hard allowlist of permitted laboratory AWS Account IDs",
     )
@@ -56,6 +64,10 @@ class Settings(BaseSettings):
     api_key: str | None = Field(
         default=None,
         description="Optional master API key for headless service authentication",
+    )
+    gemini_api_key: str | None = Field(
+        default=None,
+        description="Google Gemini API key for agentic campaign planning (gemini-2.5-flash)",
     )
     jwt_issuer: str = Field(
         default="falcon-strike-ai",
@@ -141,17 +153,27 @@ class Settings(BaseSettings):
         "123456789012",
     )
 
-    @field_validator("allowlisted_accounts", mode="before")
+    @field_validator("allowlisted_accounts", mode="after")
     @classmethod
     def parse_allowlist(cls, value: str | list[str]) -> list[str]:
-        """Parse comma-separated strings or return list."""
+        """Parse comma-separated strings or JSON arrays into a normalized list of account IDs."""
         if isinstance(value, str):
+            import json
+
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(a).strip() for a in parsed if str(a).strip()]
+            except Exception:
+                pass
             return [account.strip() for account in value.split(",") if account.strip()]
-        return value
+        return [str(a).strip() for a in value if str(a).strip()]
 
     def model_post_init(self, __context: object) -> None:
         """Post-initialization validation hook enforcing production safety checks."""
         super().model_post_init(__context)
+        if not self.gemini_api_key:
+            self.gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         self.validate_production_configuration()
 
     def validate_production_configuration(self) -> None:

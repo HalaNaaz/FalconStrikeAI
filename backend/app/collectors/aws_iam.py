@@ -98,6 +98,7 @@ class AWSIAMCollector(BaseCollector):
 
     def collect(self, account_id: str) -> tuple[dict[str, list[Any]], list[CollectionError]]:
         """Collect IAM users, roles, and policies using official read-only APIs."""
+        self.validate_scope(account_id)
         users: list[IAMUserMetadata] = []
         roles: list[IAMRoleMetadata] = []
         policies: list[PolicyMetadata] = []

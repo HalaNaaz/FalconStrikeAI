@@ -87,7 +87,11 @@ export default function DashboardPage() {
 
   const totalPaths = attackPaths.length;
   const executedCount = executions.length;
-  const uniqueAssetsAtRisk = new Set(findings.map((f) => f.target_node_id)).size;
+  const uniqueAssetsAtRisk = new Set(
+    findings
+      .map((f) => f.target_node_id || f.resource_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+  ).size;
 
   // Real detection coverage and MTTD
   const coverageDisplay = latestCorrelation
@@ -103,32 +107,35 @@ export default function DashboardPage() {
     ? "Pending"
     : "—";
 
-  // Category counts from graphSummary
+  // Category counts from graphSummary and normalized findings
+  const matchesAssetCategory = (f: MisconfigurationFinding, keywords: string[]): boolean => {
+    const target = (f.target_node_id || f.resource_id || "").toLowerCase();
+    const cat = (f.category || f.rule_name || "").toLowerCase();
+    const desc = (f.description || f.explanation || "").toLowerCase();
+    return keywords.some((kw) => target.includes(kw) || cat.includes(kw) || desc.includes(kw));
+  };
+
   const computeCount = graphSummary?.node_counts_by_type?.["EC2_INSTANCE"] ?? 0;
-  const computeAtRisk = findings.filter(
-    (f) => f.target_node_id.includes("instance") || f.target_node_id.includes("ec2")
+  const computeAtRisk = findings.filter((f) =>
+    matchesAssetCategory(f, ["instance", "ec2", "compute"])
   ).length;
 
   const identityCount =
     (graphSummary?.node_counts_by_type?.["IAM_USER"] ?? 0) +
     (graphSummary?.node_counts_by_type?.["IAM_ROLE"] ?? 0) +
     (graphSummary?.node_counts_by_type?.["IAM_POLICY"] ?? 0);
-  const identityAtRisk = findings.filter(
-    (f) =>
-      f.target_node_id.includes("iam") ||
-      f.target_node_id.includes("role") ||
-      f.target_node_id.includes("user") ||
-      f.target_node_id.includes("policy")
+  const identityAtRisk = findings.filter((f) =>
+    matchesAssetCategory(f, ["iam", "role", "user", "policy", "privilege", "wildcard"])
   ).length;
 
   const networkCount = graphSummary?.node_counts_by_type?.["SECURITY_GROUP"] ?? 0;
-  const networkAtRisk = findings.filter(
-    (f) => f.target_node_id.includes("sg") || f.target_node_id.includes("security-group")
+  const networkAtRisk = findings.filter((f) =>
+    matchesAssetCategory(f, ["sg", "security-group", "network", "ingress", "port"])
   ).length;
 
   const dataCount = graphSummary?.node_counts_by_type?.["S3_BUCKET"] ?? 0;
-  const dataAtRisk = findings.filter(
-    (f) => f.target_node_id.includes("s3") || f.target_node_id.includes("bucket")
+  const dataAtRisk = findings.filter((f) =>
+    matchesAssetCategory(f, ["s3", "bucket", "storage"])
   ).length;
 
   return (

@@ -1,5 +1,6 @@
 """API endpoints for cloud asset collection and collector status."""
 
+from collections import Counter
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -9,6 +10,7 @@ from backend.app.collectors.runner import CollectorOrchestrator
 from backend.app.core.config import settings
 from backend.app.core.exceptions import AccountNotAllowlistedError, AuthorizationTokenError
 from backend.app.core.state import app_state
+from backend.app.graph.models import MisconfigurationFinding
 
 router = APIRouter(tags=["Collectors"])
 
@@ -47,6 +49,14 @@ class CollectResponse(BaseModel):
     total_assets: int
     asset_breakdown: dict[str, int]
     error_count: int
+
+
+class CollectorFindingsResponse(BaseModel):
+    """Response containing security misconfiguration findings detected in collected assets."""
+
+    total_findings: int
+    findings_by_severity: dict[str, int]
+    findings: list[MisconfigurationFinding]
 
 
 @router.get("/collectors/status", response_model=CollectorStatusResponse)
@@ -97,4 +107,15 @@ async def collect_environment(request: CollectRequest) -> dict[str, Any]:
             "s3_buckets": len(data.s3_buckets),
         },
         "error_count": len(data.errors),
+    }
+
+
+@router.get("/collectors/findings", response_model=CollectorFindingsResponse)
+async def get_collector_findings() -> dict[str, Any]:
+    """Retrieve security misconfiguration findings for collected cloud infrastructure assets."""
+    sev_counts = Counter(f.severity.value for f in app_state.findings)
+    return {
+        "total_findings": len(app_state.findings),
+        "findings_by_severity": dict(sev_counts),
+        "findings": app_state.findings,
     }

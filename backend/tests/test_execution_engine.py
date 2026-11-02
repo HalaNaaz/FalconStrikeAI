@@ -280,3 +280,19 @@ class TestKubernetesRunner:
             assert event.technique_id == "T1526"
             assert event.status == "EMULATED_BENIGN"
             assert "k8s_runner" in (event.output_marker or "")
+
+    def test_k8s_runner_live_cluster_connectivity(self) -> None:
+        """Verify KubernetesJobRunner connects to local cluster and validates namespace."""
+        from backend.app.orchestrator.kubernetes_runner import KubernetesJobRunner
+
+        runner = KubernetesJobRunner(namespace="falcon-strike-lab")
+        if not runner.is_available():
+            pytest.skip("Local Kubernetes cluster offline")
+
+        assert runner.is_available() is True
+        from kubernetes import client
+
+        core_v1 = client.CoreV1Api()
+        namespaces = core_v1.list_namespace()
+        ns_names = [ns.metadata.name for ns in namespaces.items]
+        assert "falcon-strike-lab" in ns_names

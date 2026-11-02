@@ -27,6 +27,29 @@ APPROVED TECHNIQUES:
 - T1568 (Dynamic Resolution - Command and Control)
 - T1090.004 (Proxy: Domain Fronting - Command and Control)
 - T1537 (Transfer Data to Cloud Account - Exfiltration)
+
+OUTPUT JSON FORMAT REQUIRED:
+{
+  "objective": "Descriptive campaign objective string",
+  "target_resources": ["resource_id_1"],
+  "stages": [
+    {
+      "stage_name": "Human-readable stage name",
+      "tactic": "Discovery",
+      "technique_id": "T1526",
+      "technique_name": "Cloud Service Discovery",
+      "target_resource_id": "resource_id_1",
+      "action_parameters": {},
+      "expected_observation": "Expected log event",
+      "estimated_risk": "LOW"
+    }
+  ],
+  "selected_techniques": ["T1526"],
+  "expected_iocs": ["Expected IOC signature"],
+  "expected_telemetry": ["Expected CloudTrail or VPC flow event"],
+  "risk_summary": "Risk evaluation summary",
+  "planning_rationale": "Step-by-step reasoning for this campaign"
+}
 """
 
 USER_PLANNER_PROMPT_TEMPLATE = """Formulate an emulation campaign for the following ranked attack path:

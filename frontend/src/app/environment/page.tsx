@@ -205,7 +205,9 @@ export default function EnvironmentExplorerPage() {
                     filteredNodes.map((node) => {
                       const isSelected = selectedNode?.id === node.id;
                       const hasCriticalFinding = findings.some(
-                        (f) => f.target_node_id === node.id && f.severity === "CRITICAL"
+                        (f) =>
+                          (f.target_node_id === node.id || f.resource_id === node.id) &&
+                          f.severity === "CRITICAL"
                       );
                       const isPublic =
                         node.properties?.is_public ||
@@ -336,27 +338,33 @@ export default function EnvironmentExplorerPage() {
                 </span>
                 <div className="mt-2 flex flex-col gap-2">
                   {findings
-                    .filter((f) => f.target_node_id === selectedNode.id)
+                    .filter(
+                      (f) => f.target_node_id === selectedNode.id || f.resource_id === selectedNode.id
+                    )
                     .map((finding) => (
                       <div
                         key={finding.finding_id}
                         className="rounded-lg border border-red-500/20 bg-red-500/10 p-2.5 text-xs"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold text-red-400">{finding.rule_name}</span>
+                          <span className="font-semibold text-red-400">
+                            {finding.rule_name || finding.category || "Misconfiguration"}
+                          </span>
                           <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${getSeverityBadgeClass(finding.severity)}`}>
                             {finding.severity}
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] text-text-secondary">
-                          {finding.description}
+                          {finding.description || finding.explanation}
                         </p>
                         <p className="mt-1 text-[11px] text-brand-primary">
                           Remediation: {finding.remediation}
                         </p>
                       </div>
                     ))}
-                  {!findings.some((f) => f.target_node_id === selectedNode.id) && (
+                  {!findings.some(
+                    (f) => f.target_node_id === selectedNode.id || f.resource_id === selectedNode.id
+                  ) && (
                     <p className="text-xs text-text-muted">No security findings associated with this asset.</p>
                   )}
                 </div>

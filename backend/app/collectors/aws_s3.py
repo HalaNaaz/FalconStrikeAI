@@ -56,6 +56,7 @@ class AWSS3Collector(BaseCollector):
 
     def collect(self, account_id: str) -> tuple[list[S3BucketMetadata], list[CollectionError]]:
         """Collect S3 buckets, public access blocks, and bucket policies using read-only APIs."""
+        self.validate_scope(account_id)
         buckets: list[S3BucketMetadata] = []
         errors: list[CollectionError] = []
 
