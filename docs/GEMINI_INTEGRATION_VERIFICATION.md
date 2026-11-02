@@ -93,3 +93,4 @@ The plan was evaluated by `PolicyGateEngine.evaluate_campaign()` against 5 manda
 - [x] Plan successfully passed through `PolicyGateEngine`.
 - [x] Deterministic offline fallback proven.
 - [x] Dashboard `/api/v1/integrations/status` updated to `VERIFIED`.
+
